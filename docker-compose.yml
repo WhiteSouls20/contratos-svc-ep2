@@ -1,0 +1,31 @@
+# Orquestacion local / entorno simulado.
+# El pipeline usa IMAGE=ghcr.io/<owner>/contratos-svc:sha-<commit> para desplegar exactamente la imagen construida.
+services:
+  contratos-svc:
+    build: .
+    image: ${IMAGE:-contratos-svc:local}
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health/readiness"]
+      interval: 15s
+      timeout: 3s
+      start_period: 40s
+      retries: 3
+    restart: unless-stopped

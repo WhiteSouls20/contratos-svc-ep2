@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: contratos
+  labels:
+    app.kubernetes.io/part-of: inmonube
+    # Pod Security Standards: rechaza pods privilegiados o que corran como root
+    pod-security.kubernetes.io/enforce: restricted

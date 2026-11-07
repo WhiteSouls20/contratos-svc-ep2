@@ -1,0 +1,16 @@
+# Perfil usado en contenedores (Docker Compose y Kubernetes)
+spring:
+  jpa:
+    show-sql: false
+  h2:
+    console:
+      enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never

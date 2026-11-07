@@ -1,0 +1,30 @@
+@startuml C4-3-Componentes
+!include <C4/C4_Component>
+
+title ms-contratos — C4 Nivel 3: Componentes internos
+
+LAYOUT_WITH_LEGEND()
+
+Person(actor, "Arrendatario", "Busca, visita y firma contratos")
+Container_Boundary(ms, "ms-contratos — Spring Boot 3 (ECS Fargate)") {
+
+  Component(rest, "ContratoController", "Spring MVC REST", "Expone /api/contratos: crear, consultar, actualizar y eliminar")
+  Component(svc, "ContratoService", "Java 21", "Lógica de negocio del dominio: validaciones, reglas y transiciones")
+  Component(cons, "EventoConsumer", "AWS SDK (SQS)", "Consume los eventos de alta frecuencia del dominio")
+  Component(dyn, "EstadoDynamoDB", "AWS SDK (DynamoDB)", "Escritura condicional del estado en tiempo real")
+  ComponentDb(repo, "ContratoRepository", "Spring Data JPA", "Persistencia del histórico del dominio")
+  Component(pub, "PublicadorEventos", "AWS SDK (EventBridge)", "Publica las transiciones de estado")
+}
+
+Container(apigw, "API Gateway", "Amazon API Gateway", "JWT + throttling")
+
+Rel(actor, apigw, "Usa la API", "HTTPS + JWT")
+Rel(apigw, rest, "Enruta /api/contratos", "REST")
+Rel(cons, svc, "Entrega cada evento")
+Rel(rest, svc, "Consulta de estado")
+Rel(svc, dyn, "Actualiza el estado (condicional)", "AWS SDK")
+Rel(svc, repo, "Persiste el histórico", "JPA / SQL")
+Rel(svc, pub, "Publica la transición", "AWS SDK")
+
+SHOW_LEGEND()
+@enduml

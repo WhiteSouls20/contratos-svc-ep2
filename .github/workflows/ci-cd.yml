@@ -1,0 +1,317 @@
+name: CI/CD contratos-svc
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+# Un solo pipeline por rama a la vez; un push nuevo cancela el anterior
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/contratos-svc
+
+jobs:
+  # ---------------------------------------------------------------- IE2
+  test:
+    name: Pruebas unitarias y cobertura
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # mvn verify ejecuta JUnit + Cucumber y el check de JaCoCo (100% LINE).
+      # Si una prueba falla o la cobertura baja, el job falla y el pipeline se detiene.
+      - name: Ejecutar pruebas (JUnit + Cucumber + JaCoCo)
+        run: mvn -B verify
+
+      - name: Resumen de pruebas
+        if: always()
+        run: |
+          {
+            echo "## Resultado de pruebas"
+            echo "| Suite | Tests | Fallos | Errores | Omitidos |"
+            echo "|---|---|---|---|---|"
+            for f in target/surefire-reports/TEST-*.xml; do
+              [ -f "$f" ] || continue
+              name=$(grep -o 'testsuite [^>]*name="[^"]*"' "$f" | head -1 | sed 's/.*name="\([^"]*\)".*/\1/')
+              t=$(grep -o 'tests="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
+              fl=$(grep -o 'failures="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
+              e=$(grep -o 'errors="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
+              s=$(grep -o 'skipped="[0-9]*"' "$f" | head -1 | grep -o '[0-9]*')
+              echo "| $name | $t | $fl | $e | $s |"
+            done
+            if [ -f target/site/jacoco/jacoco.csv ]; then
+              awk -F, 'NR>1 {m+=$8; c+=$9} END {printf "\n**Cobertura de lineas (JaCoCo):** %.1f%%\n", (c/(m+c))*100}' target/site/jacoco/jacoco.csv
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publicar reportes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reportes-pruebas-${{ github.sha }}
+          path: |
+            target/surefire-reports/
+            target/site/jacoco/
+          retention-days: 30
+
+  # ---------------------------------------------------------------- IE3
+  security:
+    name: Analisis de seguridad (Snyk)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # subir resultados SARIF a la pestana Security
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar que existe el secreto SNYK_TOKEN
+        run: |
+          if [ -z "$SNYK_TOKEN" ]; then
+            echo "::error::Falta el secreto SNYK_TOKEN (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
+      # Dependencias Maven: falla si hay vulnerabilidades de severidad alta o critica
+      - name: Snyk Open Source (dependencias)
+        uses: snyk/actions/maven-3-jdk-21@master
+        with:
+          args: --severity-threshold=high --sarif-file-output=snyk-deps.sarif
+
+      # Codigo fuente (SAST): falla si hay hallazgos de severidad alta
+      - name: Snyk Code (analisis estatico)
+        if: always()
+        uses: snyk/actions/maven-3-jdk-21@master
+        with:
+          command: code test
+          args: --severity-threshold=high --sarif-file-output=snyk-code.sarif
+
+      # Las alertas quedan visibles en Security > Code scanning (no bloquea: el bloqueo lo hacen los pasos de Snyk)
+      - name: Subir alertas a GitHub Security
+        if: always() && hashFiles('*.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: .
+          category: snyk
+
+  dependency-review:
+    name: Revision de dependencias del PR
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      # Bloquea el PR si introduce dependencias con vulnerabilidades altas
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+
+  # ---------------------------------------------------------------- IE1
+  build:
+    name: Construir y publicar imagen Docker
+    needs: [test, security]   # sin pruebas ni seguridad en verde no hay imagen
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    outputs:
+      image: ${{ steps.vars.outputs.image }}
+      digest: ${{ steps.push.outputs.digest }}
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: vars
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/${owner}/contratos-svc:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Construir imagen (local, para escanear)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ${{ steps.vars.outputs.image }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.vars.outputs.build_date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Escaneo de la imagen: bloquea la publicacion si hay CVE altas o criticas
+      - name: Snyk Container (imagen)
+        uses: snyk/actions/docker@master
+        with:
+          image: ${{ steps.vars.outputs.image }}
+          args: --file=Dockerfile --severity-threshold=high --sarif-file-output=snyk-container.sarif
+
+      - name: Subir alertas de la imagen
+        if: always() && hashFiles('snyk-container.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-container.sarif
+          category: snyk-container
+
+      - name: Login en GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publicar imagen
+        id: push
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.vars.outputs.build_date }}
+          cache-from: type=gha
+
+      - name: Trazabilidad
+        if: github.event_name != 'pull_request'
+        run: |
+          {
+            echo "## Imagen publicada"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Imagen: \`${{ steps.vars.outputs.image }}\`"
+            echo "- Digest: \`${{ steps.push.outputs.digest }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------- IE4 / IE5
+  deploy:
+    name: Desplegar en entorno simulado (Kubernetes kind)
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.ref_name == 'main' && 'produccion-simulada' || 'desarrollo-simulado' }}
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE: ${{ needs.build.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Crear cluster Kubernetes local (kind)
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: contratos
+
+      - name: Instalar metrics-server (necesario para el HPA)
+        run: |
+          kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.2/components.yaml
+          kubectl -n kube-system patch deployment metrics-server --type=json \
+            -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+
+      - name: Descargar la imagen construida en el job build
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull "$IMAGE"
+          kind load docker-image "$IMAGE" --name contratos
+
+      - name: Aplicar manifiestos
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/
+          kubectl -n contratos set image deployment/contratos-svc contratos-svc="$IMAGE"
+          kubectl -n contratos annotate deployment/contratos-svc --overwrite \
+            kubernetes.io/change-cause="commit ${GITHUB_SHA} run ${GITHUB_RUN_ID}" \
+            app.duoc.cl/git-sha="${GITHUB_SHA}" \
+            app.duoc.cl/pipeline-run="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Esperar el rollout
+        run: kubectl -n contratos rollout status deployment/contratos-svc --timeout=180s
+
+      - name: Prueba de humo
+        run: |
+          kubectl -n contratos port-forward svc/contratos-svc 8080:80 &
+          sleep 5
+          curl -fsS http://localhost:8080/actuator/health | tee health.json
+          grep -q '"UP"' health.json
+          curl -fsS -X POST http://localhost:8080/api/contratos -H 'Content-Type: application/json' -d @k8s/smoke/contrato.json
+          curl -fsS http://localhost:8080/api/contratos
+          curl -fsS http://localhost:8080/actuator/info
+
+      - name: Estado del despliegue
+        if: always()
+        run: |
+          {
+            echo "## Despliegue"
+            echo '```'
+            kubectl -n contratos get deploy,rs,pods,svc,hpa,pdb -o wide
+            echo
+            kubectl -n contratos rollout history deployment/contratos-svc
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Logs en caso de falla
+        if: failure()
+        run: |
+          kubectl -n contratos describe pods
+          kubectl -n contratos logs -l app=contratos-svc --tail=200
+
+  compose-smoke:
+    name: Prueba de orquestacion con Docker Compose
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE: ${{ needs.build.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Levantar servicio
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker compose pull
+          docker compose up -d --no-build --wait --wait-timeout 120
+          curl -fsS http://localhost:8080/actuator/health
+      - name: Bajar servicio
+        if: always()
+        run: |
+          docker compose logs
+          docker compose down

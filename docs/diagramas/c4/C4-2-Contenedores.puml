@@ -1,0 +1,27 @@
+@startuml C4-2-Contenedores
+!include <C4/C4_Container>
+
+title ms-contratos — C4 Nivel 2: Contenedores
+
+LAYOUT_WITH_LEGEND()
+
+Person(actor, "Arrendatario", "Busca, visita y firma contratos")
+System_Boundary(sb, "ms-contratos (dominio de Contratos)") {
+  Container(api, "API de Contratos", "Spring Boot 3 · Java 21 · ECS Fargate", "Expone /api/contratos y persiste el dominio con su propia base de datos")
+  ContainerDb(dyn, "Estado en tiempo real", "Amazon DynamoDB (Global Tables)", "Contratos del dominio: eventos y estado vigente")
+  ContainerQueue(q, "Ingesta de eventos", "Amazon SQS + DLQ", "Eventos de alta frecuencia persistidos")
+}
+
+Container(apigw, "API Gateway", "Amazon API Gateway", "JWT + throttling")
+Container(core, "ms-contratos", "Spring Boot 3", "Servicio central del caso: origen de los eventos")
+Container(ev, "Amazon EventBridge", "Servicio AWS", "Transiciones de estado del proceso")
+
+Rel(actor, apigw, "Usa la API", "HTTPS + JWT")
+Rel(apigw, api, "Enruta /api/contratos", "REST")
+Rel_Back(core, q, "Publica eventos del proceso", "AWS SDK")
+Rel(q, api, "Entrega eventos para procesar", "AWS SDK")
+Rel(api, dyn, "Actualiza el estado (condicional)", "AWS SDK")
+Rel(api, ev, "Publica la transición", "AWS SDK")
+
+SHOW_LEGEND()
+@enduml

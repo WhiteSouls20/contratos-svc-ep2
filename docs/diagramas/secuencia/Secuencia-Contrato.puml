@@ -1,0 +1,44 @@
+@startuml Secuencia-Contrato
+title ms-contratos — Diagrama de secuencia: evento en tiempo real
+
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 320
+skinparam sequenceMessageAlignment center
+skinparam roundCorner 8
+autonumber "<b>0."
+
+participant "App Emisor" as app #D5E8D4
+participant "API Gateway" as gw #DAE8FC
+participant "SQS" as sqs #F8CECC
+box "ms-contratos" #FFF2CC
+  participant "EventoConsumer" as cons
+  participant "ContratoService" as svc
+  participant "EstadoDynamoDB" as dyn
+  participant "Repository" as repo
+end box
+participant "DynamoDB" as ddb #F8CECC
+participant "EventBridge" as ev #F8CECC
+
+== Ingesta del evento en tiempo real ==
+app -> gw : POST evento (JWT del emisor)
+gw -> sqs : encola el evento (persistido)
+sqs -> cons : entrega con reintentos
+cons -> svc : procesar evento
+svc -> ddb : escritura CONDICIONAL del estado
+ddb --> svc : OK (estado actualizado)
+svc -> repo : persiste el histórico
+svc -> ev : publica la transición de estado
+
+== Consulta del estado ==
+app -> gw : GET /api/contratos/{id} (estado actual)
+gw -> cons : enruta la consulta
+cons -> ddb : lectura clave-valor
+ddb --> app : 200 OK (estado en milisegundos)
+note over sqs, ddb
+  <b>Cola persistida + escritura condicional (RNF del caso)</b>
+  Ningún evento se pierde (SQS + DLQ) y la escritura
+  condicional evita estados inconsistentes ante
+  eventos duplicados o desordenados.
+end note
+
+@enduml
