@@ -6,7 +6,7 @@ Microservicio **contratos-svc** del caso caso11 — InmoNube, con su ciclo de vi
 
 | | |
 |---|---|
-| Stack | Spring Boot 3.3 · Java 21 · Maven · Spring Data JPA · H2 · springdoc-openapi · Actuator |
+| Stack | Spring Boot 4.1 · Java 21 · Maven · Spring Data JPA · H2 · springdoc-openapi · Actuator |
 | Calidad | JUnit 5 + Mockito · Cucumber (BDD) · JaCoCo con cobertura LINE mínima de 100% |
 | Seguridad | Dependabot · Snyk Open Source · Snyk Code · Snyk Container · Dependency Review |
 | Contenedores | Docker multi-etapa · GHCR · Docker Compose · Kubernetes (kind) |

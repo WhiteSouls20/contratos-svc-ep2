@@ -8,7 +8,7 @@ RUN --mount=type=cache,target=/root/.m2 mvn -B -q dependency:go-offline
 COPY src ./src
 # Las pruebas se ejecutan en el job "test" del pipeline, no dentro de la imagen
 RUN --mount=type=cache,target=/root/.m2 mvn -B -q package -DskipTests \
-    && java -Djarmode=layertools -jar target/*.jar extract --destination target/layers
+    && java -Djarmode=tools -jar target/*.jar extract --layers --launcher --destination target/layers
 
 # ---------- Etapa 2: runtime (solo JRE, sin Maven ni codigo fuente) ----------
 FROM eclipse-temurin:21-jre-alpine
