@@ -6,7 +6,7 @@ Microservicio **contratos-svc** del caso caso11 — InmoNube, con su ciclo de vi
 
 | | |
 |---|---|
-| Stack | Spring Boot 3.3 · Java 21 · Maven · Spring Data JPA · H2 · springdoc-openapi · Actuator |
+| Stack | Spring Boot 4.1 · Java 21 · Maven · Spring Data JPA · H2 · springdoc-openapi · Actuator |
 | Calidad | JUnit 5 + Mockito · Cucumber (BDD) · JaCoCo con cobertura LINE mínima de 100% |
 | Seguridad | Dependabot · Snyk Open Source · Snyk Code · Snyk Container · Dependency Review |
 | Contenedores | Docker multi-etapa · GHCR · Docker Compose · Kubernetes (kind) |
@@ -85,6 +85,8 @@ flowchart LR
 | Vulnerabilidades en la imagen | **Snyk Container** | `high` | La imagen no se publica ni se despliega |
 | Dependencias nuevas en un PR | **Dependency Review** | `high` | El PR no se puede fusionar |
 | Alertas | SARIF en *Security → Code scanning* y resumen en cada ejecución | — | Visibles para todo el equipo |
+
+**El bloqueo funcionó desde la primera ejecución.** Con Spring Boot 3.3.5, Snyk encontró 30 vulnerabilidades altas y críticas (Tomcat, Spring MVC, Jackson) y detuvo el pipeline. La rama 3.5.x ya no las corregía, así que se migró a Spring Boot 4.1.2 y se forzaron versiones parchadas de Jackson en el [`pom.xml`](pom.xml). La única que quedó, un XXE en `jaxb-core` (dependencia de Hibernate) sin versión corregida, se aceptó como **excepción documentada y con vencimiento** en [`.snyk`](.snyk). El servicio no procesa XML de entrada. Cuando la excepción vence, el pipeline vuelve a bloquear.
 
 El bloqueo se basa en las dependencias entre jobs (`needs: [test, security]`): si `security` falla, `build` y `deploy` no se ejecutan. Para que un PR tampoco se pueda fusionar, se configura **branch protection** (ver *Configuración inicial*).
 

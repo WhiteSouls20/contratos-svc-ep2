@@ -176,7 +176,7 @@ jobs:
         uses: snyk/actions/docker@master
         with:
           image: ${{ steps.vars.outputs.image }}
-          args: --file=Dockerfile --severity-threshold=high --sarif-file-output=snyk-container.sarif
+          args: --file=Dockerfile --policy-path=.snyk --severity-threshold=high --sarif-file-output=snyk-container.sarif
 
       - name: Subir alertas de la imagen
         if: always() && hashFiles('snyk-container.sarif') != ''

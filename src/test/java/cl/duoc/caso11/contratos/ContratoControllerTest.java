@@ -1,15 +1,13 @@
 package cl.duoc.caso11.contratos;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import cl.duoc.caso11.contratos.model.Contrato;
 import cl.duoc.caso11.contratos.service.ContratoService;
@@ -30,10 +28,7 @@ class ContratoControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    @MockBean
+    @MockitoBean
     private ContratoService service;
 
     private Contrato recurso(Long id) {
@@ -45,8 +40,8 @@ class ContratoControllerTest {
         return r;
     }
 
-    private String body() throws Exception {
-        return objectMapper.writeValueAsString(recurso(null));
+    private String body() {
+        return "{\"nombre\":\"Demo\",\"propiedad\":\"valor\",\"arrendatario\":\"valor\"}";
     }
 
     @Test

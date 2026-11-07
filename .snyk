@@ -1,0 +1,14 @@
+# Politica de Snyk: excepciones aceptadas, con justificacion y fecha de vencimiento.
+# Al vencer, el pipeline vuelve a bloquear y la excepcion debe revisarse.
+version: v1.25.0
+ignore:
+  SNYK-JAVA-ORGGLASSFISHJAXB-20883142:
+    - '*':
+        reason: >-
+          XXE en jaxb-core 4.0.9 (dependencia transitiva de Hibernate). Sin version corregida publicada.
+          El servicio no procesa XML de entrada: la API solo acepta JSON y Hibernate usa JAXB
+          unicamente para mapeos XML internos del classpath, que este proyecto no tiene.
+          Dependabot avisara cuando exista un parche.
+        expires: 2027-02-07T00:00:00.000Z
+        created: 2026-11-07T00:00:00.000Z
+patch: {}
