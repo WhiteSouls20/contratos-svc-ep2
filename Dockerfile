@@ -11,7 +11,7 @@ RUN --mount=type=cache,target=/root/.m2 mvn -B -q package -DskipTests \
     && java -Djarmode=tools -jar target/*.jar extract --layers --launcher --destination target/layers
 
 # ---------- Etapa 2: runtime (solo JRE, sin Maven ni codigo fuente) ----------
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:24-jre-alpine
 
 ARG GIT_SHA=local
 ARG BUILD_DATE=unknown
