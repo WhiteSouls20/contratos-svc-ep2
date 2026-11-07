@@ -20,7 +20,7 @@
     <properties>
         <java.version>21</java.version>
         <springdoc.version>3.2.0</springdoc.version>
-        <cucumber.version>7.34.9</cucumber.version>
+        <cucumber.version>8.0.4</cucumber.version>
         <!-- Parches de seguridad de Jackson (SNYK-JAVA-*JACKSONCORE-2176183x) aun no incluidos en Boot 4.1.2 -->
         <jackson-bom.version>3.1.8</jackson-bom.version>
         <jackson-2-bom.version>2.21.8</jackson-2-bom.version>
