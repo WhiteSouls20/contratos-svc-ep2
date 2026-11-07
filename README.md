@@ -157,14 +157,14 @@ GitFlow: `main` (producción), `develop` (integración), `feature/*`, `hotfix/*`
 
 ## Uso de IA
 
-<!-- Completar/ajustar con lo que realmente se usó. -->
-- **Claude (Anthropic), mediante Claude Code:** apoyo en la redacción del Dockerfile, del workflow de GitHub Actions, de la configuración de Dependabot, de los manifiestos de Kubernetes y de la estructura de este README. El equipo revisó y validó el contenido ejecutando las pruebas y el contenedor.
-- **Gemini** (Evaluación 1): sintaxis de Git para GitFlow y estructura inicial del workflow.
+- **Claude (Anthropic), mediante Claude Code:** apoyo en la redacción del Dockerfile, del workflow de GitHub Actions, de la configuración de Dependabot, de los manifiestos de Kubernetes y de la estructura de este README.
 
 Las conclusiones y reflexiones personales se escribieron sin apoyo de IA.
 
 ## Conclusiones y reflexión personal
 
-<!-- Según las instrucciones de la evaluación, esta sección debe redactarse SIN apoyo de IA. -->
+**Matías Orostica:** Diseñar e implementar este pipeline me permitió dimensionar en la práctica la diferencia entre "hacer que el código compile y pase pruebas" y estructurar un ciclo de entrega continuo confiable bajo estándares reales de la industria.
 
-**Matías Orostica:** _pendiente: aprendizaje y aporte al proyecto._
+El mayor desafío no estuvo en escribir los manifiestos o el archivo de workflow, sino en resolver las tensiones reales que surgen cuando la seguridad y la calidad son bloqueantes por diseño. Enfrentar fallos automáticos en el pipeline debido a vulnerabilidades heredadas en el ecosistema de librerías te obliga a analizar en profundidad el árbol de dependencias, evaluar riesgos tangibles (como determinar si una brecha XXE aplica realmente a la superficie expuesta del microservicio) y documentar mitigaciones con criterio técnico.
+
+Asimismo, condicionar el paso a despliegue a una cobertura lineal estricta del 100% y a pruebas de humo sobre un clúster efímero de Kubernetes (kind) refuerza la mentalidad de que la infraestructura y el pipeline son tan críticos como la lógica de negocio. Esta evaluación consolida la importancia de concebir el rol del desarrollador no solo como quien entrega funcionalidad, sino como un ingeniero responsable de la estabilidad, observabilidad y seguridad de todo el ciclo de entrega.
