@@ -24,7 +24,7 @@ jobs:
     name: Pruebas unitarias y cobertura
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-java@v4
         with:
@@ -78,7 +78,7 @@ jobs:
     env:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Verificar que existe el secreto SNYK_TOKEN
         run: |
@@ -118,7 +118,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Bloquea el PR si introduce dependencias con vulnerabilidades altas
       - uses: actions/dependency-review-action@v4
         with:
@@ -140,7 +140,7 @@ jobs:
     env:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - id: vars
         run: |
@@ -232,7 +232,7 @@ jobs:
     env:
       IMAGE: ${{ needs.build.outputs.image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Crear cluster Kubernetes local (kind)
         uses: helm/kind-action@v1
@@ -303,7 +303,7 @@ jobs:
     env:
       IMAGE: ${{ needs.build.outputs.image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Levantar servicio
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
