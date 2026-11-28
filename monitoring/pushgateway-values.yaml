@@ -1,0 +1,9 @@
+# EP3 / IE3 — Pushgateway: recibe las metricas que empuja el pipeline
+# (cobertura JaCoCo y duracion del despliegue), que no salen de la aplicacion.
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  additionalLabels:
+    release: kube-prometheus-stack
+resources:
+  requests: { cpu: 10m, memory: 32Mi }

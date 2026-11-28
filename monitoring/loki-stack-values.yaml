@@ -1,0 +1,10 @@
+# EP3 / IE1 — Logs: chart grafana/loki-stack (Loki + Promtail).
+# Promtail corre como DaemonSet en cada nodo, lee los logs JSON de los pods y los envia a Loki.
+loki:
+  enabled: true
+  persistence:
+    enabled: false   # laboratorio: los logs viven mientras viva el pod de Loki
+promtail:
+  enabled: true
+grafana:
+  enabled: false     # se usa el Grafana de kube-prometheus-stack

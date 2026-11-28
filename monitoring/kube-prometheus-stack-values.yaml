@@ -1,0 +1,49 @@
+# EP3 / IE2 — Valores del chart prometheus-community/kube-prometheus-stack.
+# Lo instala el pipeline (job deploy-eks) en el namespace "monitoring" del mismo cluster que la app.
+# Incluye: Prometheus Operator, Prometheus, Alertmanager, Grafana, kube-state-metrics y node-exporter.
+
+prometheus:
+  prometheusSpec:
+    retention: 3d
+    # Recolecta TODOS los ServiceMonitor/PrometheusRule del cluster, no solo los del chart
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits: { memory: 1Gi }
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 20m, memory: 64Mi }
+
+grafana:
+  # La clave de admin la crea el pipeline en el Secret grafana-admin (nunca queda en el repo)
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  defaultDashboardsTimezone: America/Santiago
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard     # cualquier ConfigMap con esta etiqueta se carga como dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      url: http://loki.monitoring.svc:3100
+      access: proxy
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+
+kube-state-metrics:
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+
+prometheus-node-exporter:
+  resources:
+    requests: { cpu: 20m, memory: 32Mi }
