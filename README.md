@@ -1,6 +1,35 @@
-# Contratos — Pipeline CI/CD (Evaluación Parcial N°2 · DOY0101)
+# Contratos — Observabilidad y entornos reales (EP3) · Pipeline CI/CD (EP2) · DOY0101
 
 **Autor:** Matías Orostica
+
+## EP3 en 1 minuto (prueba del 9)
+
+| Pregunta | Respuesta | Evidencia |
+|---|---|---|
+| ¿Qué monitoreo y cómo se verifica? | Uso (CPU/memoria), errores 5xx, disponibilidad y logs de `contratos-svc`, con Prometheus + Micrometer, Loki y alertas | [docs/06 §2](docs/06_EP3_Observabilidad.md#2-ie1--monitoreo-las-4-señales), [`monitoring/`](monitoring/) |
+| ¿Dónde corre y quién lo desplegó? | Amazon EKS (AWS Academy, `us-east-1`), desplegado por el job `deploy-eks` del pipeline | [docs/06 §3](docs/06_EP3_Observabilidad.md#3-ie2--kubernetes-en-la-nube), resumen de cada ejecución en *Actions* |
+| ¿Qué mide el dashboard y qué decide? | CPU/memoria, errores 5xx, cobertura JaCoCo y tiempo de despliegue | [dashboard JSON](monitoring/dashboards/contratos-svc.json), [docs/06 §4–5](docs/06_EP3_Observabilidad.md#4-ie3--dashboard-con-las-4-métricas) |
+| ¿Qué frena el pipeline y dónde está la evidencia? | SonarCloud, auditoría (gitleaks + trivy + políticas), Snyk, pruebas, branch protection y aprobación de producción | [docs/06 §6–7](docs/06_EP3_Observabilidad.md#6-ie5--cumplimiento-en-3-vías), ramas `demo/*` |
+
+| IE | Peso | Dónde |
+|---|---|---|
+| IE1 Monitoreo (4 señales) | 20% | [`application*.yml`](src/main/resources/), [`monitoring/servicemonitor.yaml`](monitoring/servicemonitor.yaml), [`monitoring/alertas.yaml`](monitoring/alertas.yaml), Loki |
+| IE2 Kubernetes en la nube desde el pipeline | 20% | [`infra-eks.yml`](.github/workflows/infra-eks.yml), job `deploy-eks` en [`ci-cd.yml`](.github/workflows/ci-cd.yml), [`k8s/`](k8s/) |
+| IE3 Dashboard (4 métricas) | 10% | [`monitoring/dashboards/contratos-svc.json`](monitoring/dashboards/contratos-svc.json) |
+| IE4 Decisiones con datos | 10% | [docs/06 §5](docs/06_EP3_Observabilidad.md#5-ie4--cómo-se-decide-con-los-datos) |
+| IE5 Cumplimiento en 3 vías | 20% | jobs `sonar` y `audit`, [`audit/`](audit/), branch protection |
+| IE6 Freno demostrado | 20% | ramas `demo/freno-secreto` y `demo/freno-cve`, [docs/06 §7](docs/06_EP3_Observabilidad.md#7-ie6--demostración-del-freno) |
+
+Configuración extra que requiere EP3 (además de la de EP2, más abajo):
+
+1. Secretos de Actions `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (Learner Lab › AWS Details; se renuevan en cada sesión).
+2. Secreto `SONAR_TOKEN` (sonarcloud.io › My Account › Security) y *Automatic Analysis* desactivado en el proyecto de SonarCloud.
+3. Environment `produccion` con revisor requerido y branch protection en `main`.
+4. Crear el cluster: *Actions › Infraestructura EKS › Run workflow › crear*. Al terminar la sesión: *eliminar*.
+
+---
+
+# EP2 — Pipeline CI/CD
 
 Microservicio **contratos-svc** del caso caso11 — InmoNube, con su ciclo de vida automatizado en GitHub Actions: pruebas, análisis de seguridad, contenedores, despliegue y orquestación.
 

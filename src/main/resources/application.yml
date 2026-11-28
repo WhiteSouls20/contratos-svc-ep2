@@ -22,10 +22,21 @@ server:
   port: ${PORT:8080}
 
 management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
   endpoint:
     health:
       probes:
         enabled: true
+  # EP3 / IE1: etiquetas comunes y histogramas para latencia, errores 5xx y disponibilidad
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
   info:
     env:
       enabled: true

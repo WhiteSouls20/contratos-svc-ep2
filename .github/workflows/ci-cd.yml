@@ -2,7 +2,8 @@ name: CI/CD contratos-svc
 
 on:
   push:
-    branches: [main, develop]
+    # demo/** : ramas con fallas inyectadas para demostrar el freno del pipeline (EP3 / IE6)
+    branches: [main, develop, "demo/**"]
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
@@ -23,6 +24,8 @@ jobs:
   test:
     name: Pruebas unitarias y cobertura
     runs-on: ubuntu-latest
+    outputs:
+      coverage: ${{ steps.cobertura.outputs.coverage }}
     steps:
       - uses: actions/checkout@v7
 
@@ -36,6 +39,14 @@ jobs:
       # Si una prueba falla o la cobertura baja, el job falla y el pipeline se detiene.
       - name: Ejecutar pruebas (JUnit + Cucumber + JaCoCo)
         run: mvn -B verify
+
+      # EP3 / IE3: la cobertura se pasa al job deploy-eks, que la empuja al Pushgateway
+      - name: Calcular cobertura
+        id: cobertura
+        run: |
+          cov=$(awk -F, 'NR>1 {m+=$8; c+=$9} END {printf "%.2f", (c/(m+c))*100}' target/site/jacoco/jacoco.csv)
+          echo "coverage=$cov" >> "$GITHUB_OUTPUT"
+          echo "Cobertura de lineas: $cov%"
 
       - name: Resumen de pruebas
         if: always()
@@ -125,10 +136,58 @@ jobs:
           fail-on-severity: high
           comment-summary-in-pr: on-failure
 
+  # ---------------------------------------------------------------- EP3 / IE5
+  # Quality gate de SonarCloud: si la calidad o la seguridad no cumplen, el job falla
+  sonar:
+    name: Quality gate (SonarCloud)
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # Sonar necesita la historia para calcular "codigo nuevo"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Verificar que existe el secreto SONAR_TOKEN
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::error::Falta el secreto SONAR_TOKEN (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+      # qualitygate.wait=true: el paso espera el veredicto del quality gate y falla si es ERROR
+      - name: Analisis SonarCloud + quality gate
+        run: >
+          mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+          -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300
+
+  # Auditoria propia: secretos (gitleaks), CVE criticas (trivy) y politicas de despliegue
+  audit:
+    name: Auditoria de cumplimiento
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Ejecutar audit/auditoria.sh
+        run: bash audit/auditoria.sh
+      - name: Publicar reporte
+        if: always()
+        run: |
+          [ -f audit/reporte.md ] && cat audit/reporte.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: auditoria-${{ github.sha }}
+          path: audit/*reporte*
+          retention-days: 30
+
   # ---------------------------------------------------------------- IE1
   build:
     name: Construir y publicar imagen Docker
-    needs: [test, security]   # sin pruebas ni seguridad en verde no hay imagen
+    # EP3 / IE6: gates secuenciales. Sin pruebas, seguridad, quality gate y auditoria en verde no hay imagen
+    needs: [test, security, sonar, audit]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -315,3 +374,152 @@ jobs:
         run: |
           docker compose logs
           docker compose down
+
+  # ---------------------------------------------------------------- EP3 / IE2
+  # Despliegue real en Amazon EKS (AWS Academy). Solo desde main, despues de que la
+  # misma imagen paso la prueba en kind, y con aprobacion manual (environment "produccion").
+  deploy-eks:
+    name: Desplegar en Amazon EKS + observabilidad
+    needs: [test, build, deploy]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: produccion
+    concurrency:
+      group: deploy-eks
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      IMAGE: ${{ needs.build.outputs.image }}
+      COVERAGE: ${{ needs.test.outputs.coverage }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      CLUSTER_NAME: ${{ vars.EKS_CLUSTER || 'contratos-eks' }}
+    steps:
+      - name: Marcar inicio del despliegue
+        run: echo "INICIO=$(date +%s)" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+
+      - name: Verificar credenciales de AWS Academy
+        env:
+          K: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          T: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          if [ -z "$K" ] || [ -z "$T" ]; then
+            echo "::error::Faltan AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN (Learner Lab > AWS Details)."
+            exit 1
+          fi
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: azure/setup-helm@v4
+
+      - name: Conectar kubectl al cluster EKS
+        run: |
+          aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
+          kubectl get nodes -o wide
+
+      - name: metrics-server (para HPA y kubectl top)
+        run: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.2/components.yaml
+
+      # Observabilidad desplegada por el pipeline en el mismo cluster que la app
+      - name: Instalar Prometheus + Grafana + Alertmanager, Loki y Pushgateway
+        run: |
+          kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+          if ! kubectl -n monitoring get secret grafana-admin >/dev/null 2>&1; then
+            kubectl -n monitoring create secret generic grafana-admin \
+              --from-literal=admin-user=admin \
+              --from-literal=admin-password="$(openssl rand -base64 18)"
+          fi
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add grafana https://grafana.github.io/helm-charts
+          helm repo update
+          helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+            -n monitoring -f monitoring/kube-prometheus-stack-values.yaml --wait --timeout 15m
+          helm upgrade --install loki grafana/loki-stack \
+            -n monitoring -f monitoring/loki-stack-values.yaml --wait --timeout 10m
+          helm upgrade --install pushgateway prometheus-community/prometheus-pushgateway \
+            -n monitoring -f monitoring/pushgateway-values.yaml --wait --timeout 5m
+
+      - name: Publicar dashboard de Grafana (desde monitoring/dashboards)
+        run: |
+          kubectl -n monitoring create configmap dashboard-contratos-svc \
+            --from-file=monitoring/dashboards/ --dry-run=client -o yaml \
+            | kubectl label --local -f - grafana_dashboard=1 -o yaml \
+            | kubectl apply -f -
+
+      - name: Desplegar contratos-svc
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/
+          kubectl apply -f monitoring/servicemonitor.yaml -f monitoring/alertas.yaml
+          kubectl -n contratos set image deployment/contratos-svc contratos-svc="$IMAGE"
+          kubectl -n contratos annotate deployment/contratos-svc --overwrite \
+            kubernetes.io/change-cause="commit ${GITHUB_SHA} run ${GITHUB_RUN_ID}" \
+            app.duoc.cl/git-sha="${GITHUB_SHA}" \
+            app.duoc.cl/pipeline-run="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            app.duoc.cl/desplegado-por="github-actions (${GITHUB_ACTOR})"
+          kubectl -n contratos rollout status deployment/contratos-svc --timeout=300s
+
+      - name: Prueba de humo y trafico inicial
+        run: |
+          kubectl -n contratos port-forward svc/contratos-svc 8080:80 &
+          sleep 5
+          curl -fsS http://localhost:8080/actuator/health | grep -q '"UP"'
+          curl -fsS http://localhost:8080/actuator/prometheus | grep -q http_server_requests
+          curl -fsS -X POST http://localhost:8080/api/contratos -H 'Content-Type: application/json' -d @k8s/smoke/contrato.json
+          for i in $(seq 1 30); do curl -s -o /dev/null http://localhost:8080/api/contratos; curl -s -o /dev/null http://localhost:8080/api/contratos/999999; done
+          kill %1 || true
+
+      # IE3: cobertura y tiempo de despliegue llegan a Prometheus via Pushgateway
+      - name: Empujar metricas del pipeline al Pushgateway
+        run: |
+          kubectl -n monitoring port-forward svc/pushgateway-prometheus-pushgateway 9091:9091 &
+          sleep 5
+          DURACION=$(( $(date +%s) - INICIO ))
+          echo "Duracion del despliegue: ${DURACION}s · Cobertura: ${COVERAGE}%"
+          cat <<METRICAS | curl -fsS --data-binary @- http://localhost:9091/metrics/job/contratos-svc-pipeline/app/contratos-svc
+          # TYPE ci_jacoco_line_coverage_percent gauge
+          ci_jacoco_line_coverage_percent{commit="${GITHUB_SHA::7}"} ${COVERAGE:-0}
+          # TYPE ci_deploy_duration_seconds gauge
+          ci_deploy_duration_seconds{commit="${GITHUB_SHA::7}"} ${DURACION}
+          # TYPE ci_deploy_timestamp_seconds gauge
+          ci_deploy_timestamp_seconds{commit="${GITHUB_SHA::7}"} $(date +%s)
+          METRICAS
+          kill %1 || true
+          echo "DURACION=$DURACION" >> "$GITHUB_ENV"
+
+      - name: Evidencia del despliegue
+        if: always()
+        run: |
+          {
+            echo "## Despliegue en Amazon EKS"
+            echo "- Cluster: \`$CLUSTER_NAME\` ($AWS_REGION) · desplegado por: GitHub Actions run ${GITHUB_RUN_ID}"
+            echo "- Imagen: \`$IMAGE\`"
+            echo "- Cobertura: ${COVERAGE}% · Duracion del despliegue: ${DURACION:-?}s"
+            echo '```'
+            kubectl get nodes -o wide
+            echo
+            kubectl -n contratos get deploy,pods,svc,hpa -o wide
+            echo
+            kubectl -n contratos rollout history deployment/contratos-svc
+            echo
+            kubectl -n monitoring get pods
+            echo
+            helm list -n monitoring
+            echo '```'
+            echo "Grafana: \`kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80\` → http://localhost:3000 (dashboard *contratos-svc — Observabilidad EP3*)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Logs en caso de falla
+        if: failure()
+        run: |
+          kubectl -n contratos describe pods || true
+          kubectl -n contratos logs -l app=contratos-svc --tail=200 || true
+          kubectl -n monitoring get pods || true

@@ -1,0 +1,52 @@
+# EP3 / IE1-IE4 — Reglas de alerta sobre las 4 senales. Se ven en Prometheus > Alerts y en Alertmanager.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: contratos-svc
+  namespace: contratos
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: contratos-svc
+      rules:
+        # Disponibilidad: ninguna replica responde a Prometheus
+        - alert: ContratosCaido
+          expr: sum(up{job="contratos-svc", namespace="contratos"}) == 0 or absent(up{job="contratos-svc", namespace="contratos"})
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: "contratos-svc no tiene replicas disponibles"
+        # Errores: mas de 5% de respuestas 5xx
+        - alert: ContratosErrores5xx
+          expr: |
+            sum(rate(http_server_requests_seconds_count{application="contratos-svc", status=~"5.."}[5m]))
+              / clamp_min(sum(rate(http_server_requests_seconds_count{application="contratos-svc"}[5m])), 0.001) > 0.05
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "Mas de 5% de respuestas 5xx en contratos-svc"
+        # Uso: CPU por encima del 80% del limite
+        - alert: ContratosCPUAlta
+          expr: |
+            sum(rate(container_cpu_usage_seconds_total{namespace="contratos", container="contratos-svc"}[5m]))
+              / sum(kube_pod_container_resource_limits{namespace="contratos", container="contratos-svc", resource="cpu"}) > 0.8
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "CPU de contratos-svc sobre 80% del limite"
+        # Uso: heap de la JVM sobre 85%
+        - alert: ContratosHeapAlto
+          expr: |
+            sum by (pod) (jvm_memory_used_bytes{application="contratos-svc", area="heap"})
+              / sum by (pod) (jvm_memory_max_bytes{application="contratos-svc", area="heap"} > 0) > 0.85
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "Heap JVM sobre 85% en {{ $labels.pod }}"
+        # Disponibilidad: reinicios repetidos (crash loop)
+        - alert: ContratosReinicios
+          expr: increase(kube_pod_container_status_restarts_total{namespace="contratos"}[15m]) > 2
+          labels: { severity: warning }
+          annotations:
+            summary: "El pod {{ $labels.pod }} se reinicio mas de 2 veces en 15 min"

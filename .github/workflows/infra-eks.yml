@@ -1,0 +1,68 @@
+name: Infraestructura EKS (AWS Academy)
+
+# EP3 / IE2 — El cluster se crea y se elimina desde GitHub Actions, no a mano.
+# Se ejecuta manualmente: Actions > "Infraestructura EKS" > Run workflow > accion.
+on:
+  workflow_dispatch:
+    inputs:
+      accion:
+        description: "crear o eliminar el cluster"
+        type: choice
+        options: [crear, eliminar, estado]
+        default: crear
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-eks
+  cancel-in-progress: false
+
+jobs:
+  eks:
+    name: EKS ${{ inputs.accion }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      CLUSTER_NAME: ${{ vars.EKS_CLUSTER || 'contratos-eks' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Identidad
+        run: aws sts get-caller-identity
+
+      - name: Crear cluster
+        if: inputs.accion == 'crear'
+        run: bash k8s/eks/crear-cluster.sh
+
+      - name: Eliminar cluster
+        if: inputs.accion == 'eliminar'
+        run: |
+          # Primero se borran los Services LoadBalancer (si existen) para no dejar ELB cobrando
+          if aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION" 2>/dev/null; then
+            kubectl get svc -A -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace} {.metadata.name}{"\n"}{end}' \
+              | while read -r ns n; do [ -n "$n" ] && kubectl -n "$ns" delete svc "$n"; done || true
+          fi
+          bash k8s/eks/eliminar-cluster.sh
+
+      - name: Estado
+        if: always()
+        run: |
+          {
+            echo "## EKS: ${{ inputs.accion }}"
+            echo '```'
+            aws eks list-clusters --region "$AWS_REGION"
+            aws eks describe-cluster --name "$CLUSTER_NAME" --region "$AWS_REGION" \
+              --query 'cluster.{estado:status,version:version,endpoint:endpoint,creado:createdAt}' 2>/dev/null || echo "sin cluster"
+            aws eks describe-nodegroup --cluster-name "$CLUSTER_NAME" --nodegroup-name nodos --region "$AWS_REGION" \
+              --query 'nodegroup.{estado:status,tipo:instanceTypes,escala:scalingConfig}' 2>/dev/null || echo "sin nodegroup"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
