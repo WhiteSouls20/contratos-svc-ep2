@@ -3,6 +3,8 @@ kind: Service
 metadata:
   name: contratos-svc
   namespace: contratos
+  labels:
+    app: contratos-svc   # lo usa el ServiceMonitor de Prometheus (monitoring/servicemonitor.yaml)
 spec:
   type: ClusterIP
   selector:
