@@ -6,11 +6,19 @@ spring:
     console:
       enabled: false
 
+# EP3 / IE1: logs estructurados en JSON (formato ECS) por stdout.
+# Promtail los recoge de cada pod y los envia a Loki, donde se consultan desde Grafana.
+logging:
+  structured:
+    format:
+      console: ecs
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # prometheus: metricas de uso, errores y disponibilidad para Prometheus
+        include: health,info,prometheus
   endpoint:
     health:
       show-details: never
