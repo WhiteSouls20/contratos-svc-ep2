@@ -1,0 +1,28 @@
+# EP3 / IE5 — Reglas de deteccion de secretos.
+# Se usan las ~150 reglas por defecto de gitleaks (claves AWS, tokens GitHub, llaves privadas, etc.)
+# mas una regla propia del proyecto para claves escritas directo en codigo o configuracion.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "credencial-en-codigo"
+description = "Clave, password o token escrito directamente en el codigo o la configuracion"
+regex = '''(?i)(password|passwd|secret|api[_-]?key|token)\s*[:=]\s*["']?([A-Za-z0-9_\-\/+=]{12,})["']?'''
+secretGroup = 2
+keywords = ["password", "passwd", "secret", "api_key", "apikey", "api-key", "token"]
+
+[allowlist]
+description = "Archivos que no contienen secretos reales"
+paths = [
+  '''docs/.*\.pdf''',
+  '''docs/diagramas/.*''',
+  '''audit/gitleaks\.toml''',
+]
+# Referencias a secretos de GitHub Actions, variables o nombres de Secret de Kubernetes, no valores
+regexTarget = "line"
+regexes = [
+  '''existingSecret''',
+  '''\$\{\{\s*secrets\.[A-Z_]+\s*\}\}''',
+  '''\$\{[A-Z_]+\}''',
+  '''passwordKey''',
+]
