@@ -13,7 +13,7 @@
 
     <groupId>cl.duoc.caso11</groupId>
     <artifactId>contratos-svc</artifactId>
-    <version>1.1.0</version>
+    <version>1.2.0</version>
     <name>Contratos | contratos</name>
     <description>Microservicio Contratos - caso caso11 (InmoNube)</description>
 
@@ -24,6 +24,11 @@
         <!-- Parches de seguridad de Jackson (SNYK-JAVA-*JACKSONCORE-2176183x) aun no incluidos en Boot 4.1.2 -->
         <jackson-bom.version>3.1.8</jackson-bom.version>
         <jackson-2-bom.version>2.21.8</jackson-2-bom.version>
+        <!-- EP3 / IE5: analisis de calidad y seguridad en SonarCloud (quality gate) -->
+        <sonar.host.url>https://sonarcloud.io</sonar.host.url>
+        <sonar.organization>whitesouls20</sonar.organization>
+        <sonar.projectKey>WhiteSouls20_contratos-svc-ep2</sonar.projectKey>
+        <sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
     </properties>
 
     <dependencies>
@@ -96,11 +101,17 @@
             <groupId>org.junit.platform</groupId>
             <artifactId>junit-platform-suite</artifactId>
             <scope>test</scope>
-	</dependency>
-	<dependency>
-    	    <groupId>org.springframework.boot</groupId>
-    	    <artifactId>spring-boot-starter-actuator</artifactId>
-	</dependency>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- EP3 / IE1: expone /actuator/prometheus para que Prometheus recolecte las metricas -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
     </dependencies>
 
     <build>

@@ -1,6 +1,14 @@
 # Changelog
 contratos-svc
 
+## [1.2.0] - 2026 (Evaluacion Parcial 3)
+Metricas Prometheus (/actuator/prometheus) y logs JSON (ECS) en el perfil prod.
+Despliegue en Amazon EKS desde el pipeline (job deploy-eks) y workflow de infraestructura (infra-eks.yml).
+Observabilidad en el cluster: kube-prometheus-stack, Loki + Promtail, Pushgateway, ServiceMonitor y alertas.
+Dashboard de Grafana versionado con CPU/memoria, errores 5xx, cobertura y tiempo de despliegue.
+Gates de cumplimiento: SonarCloud quality gate y auditoria propia (gitleaks, trivy, politicas de despliegue).
+Environment produccion con aprobacion y ramas demo/* para demostrar el freno.
+
 ## [1.1.0] - 2026 (Evaluacion Parcial 2)
 Dockerfile multi-etapa optimizado (JRE Alpine, usuario sin root, capas de Spring Boot, healthcheck).
 Pipeline CI/CD en GitHub Actions: pruebas, Snyk (dependencias, codigo e imagen), build y publicacion en GHCR, despliegue automatico en Kubernetes (kind).

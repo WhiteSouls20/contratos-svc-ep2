@@ -7,3 +7,5 @@ target/
 .DS_Store
 .env
 
+audit/reporte.md
+audit/gitleaks-reporte.json
